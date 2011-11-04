@@ -1,0 +1,400 @@
+<!doctype html>
+<html>
+<head>
+    <title>Special Projects Timeline</title>
+    <meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+    <script src="http://api.simile-widgets.org/timeline/2.3.1/timeline-api.js?bundle=true" 
+            type="text/javascript"></script>
+    <script type="text/javascript" src="filter.js"></script>
+    <script type="text/javascript" 
+            src="http://code.jquery.com/jquery-1.4.4.min.js"></script>
+    <script type="text/javascript" src="jquery.icalendar.js"></script>
+    <script type="text/javascript">
+
+    const ONEDAY = 1000 * 60 * 60 * 24;
+    var tl;
+
+    var projects = { // {{{
+        'webifyme': 'Webify Me (Desktop)',
+        'spark': 'Spark (Mobile)',
+        'dstudio': 'MDN Demo Studio',
+        'webowonder': 'Web O\'Wonder (Demo Microsite)',
+        'markup': 'Mark Up (Desktop)',
+        'tparty': 'Twitter Party (Desktop)',
+        'joinmozilla': 'New \'Join Mozilla\' page on mozilla.org',
+        'syncacc': 'New Services account page',
+        'fbbadges': 'Facebook Badges',
+        'glow': 'Global Map a.k.a. Glow - the new download stats page',
+        'fbwebhero': 'Facebook Web Hero',
+        'sparkeol': 'Spark EOL (End of Life)',
+    } // }}}
+
+    function convert(ical_obj) { // {{{
+        var source = {
+            'events' : [],
+        };
+        var events = ical_obj.vevent;
+        for (var i=0, ev; ev = events[i]; i++) {
+            var summary = ev.summary.split(' ');
+            var event = {
+                'start': ev.dtstart._value,
+                'end': ev.dtend._value,
+                'durationEvent': ev.dtstart._value.getTime() + ONEDAY != 
+                                 ev.dtend._value.getTime(),
+                'classname': summary.shift().toLowerCase(),
+                'title': summary.join(' '),
+            };
+            event.description = 'Project: ' + projects[event.classname];
+            source.events.push(event);
+        }
+        return source;
+    } // }}}
+
+    function onLoad() { // {{{
+        var theme = Timeline.ClassicTheme.create();
+        theme.firstDayOfWeek = 1;
+        theme.event.bubble.width = 350;
+        theme.event.bubble.height = 300;
+        theme.event.track.height = 30;
+        theme.event.tape.height = 20;
+        theme.event.overviewTrack.gap = 1;
+        theme.event.overviewTrack.offset = 30;
+        theme.event.overviewTrack.height = 10;
+        theme.event.overviewTrack.tickHeight = 10;
+        theme.ether.interval.weekend.opacity = 50;
+        
+        var eventSource = new Timeline.DefaultEventSource();
+        var bandInfos = [
+            Timeline.createBandInfo({
+                eventSource:    eventSource,
+                date:           new Date(Date.now() + ONEDAY * 7),
+                width:          "80%", 
+                intervalUnit:   Timeline.DateTime.WEEK, 
+                intervalPixels: 300,
+                theme:          theme,
+            }),
+            Timeline.createBandInfo({
+                overview:       true,
+                eventSource:    eventSource,
+                width:          "20%", 
+                intervalUnit:   Timeline.DateTime.MONTH, 
+                intervalPixels: 500,
+                theme: theme,
+            })
+        ];
+        bandInfos[1].syncWith = 0;
+        bandInfos[1].highlight = true;
+        bandInfos[1].eventPainter.paintDurationEvent = function(evt, metrics, theme, highlightIndex) {
+            var latestStartDate = evt.getLatestStart();
+            var earliestEndDate = evt.getEarliestEnd();
+            
+            var latestStartPixel = Math.round(this._band.dateToPixelOffset(latestStartDate));
+            var earliestEndPixel = Math.round(this._band.dateToPixelOffset(earliestEndDate));
+            
+            var tapeTrack = 0;
+            for (; tapeTrack < this._tracks.length; tapeTrack++) {
+                if (earliestEndPixel < this._tracks[tapeTrack]) {
+                    break;
+                }
+            }
+            this._tracks[tapeTrack] = latestStartPixel;
+            
+            var color = evt.getColor(),
+                klassName = evt.getClassName();
+            if (klassName) {
+              color = null;
+            } else {
+              color = color != null ? color : theme.event.duration.color;
+            }
+            
+            var tapeElmtData = this._paintEventTape(evt, tapeTrack, latestStartPixel, earliestEndPixel,
+              color, 100, metrics, theme, klassName);
+            
+            this._createHighlightDiv(highlightIndex, tapeElmtData, theme);
+        };
+        
+
+        var now = new Date(Date.now());
+        var today = [
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+        ]
+
+        for (var i = 0; i < bandInfos.length; i++) {
+            bandInfos[i].decorators = [
+                new Timeline.SpanHighlightDecorator({
+                    startDate:  new Date(today[0], today[1], today[2]),
+                    endDate:    new Date(today[0], today[1], today[2] + 1),
+                    color:      "#FFC080",
+                    opacity:    50,
+                    startLabel: "today",
+                    theme:      theme
+                }),
+            ];
+        }
+
+        tl = Timeline.create(document.getElementById("timeline"), bandInfos);
+        $.get('proxy.php', function(data) {
+            var ical_obj = $.icalendar.parse(data);
+            var simile_obj = convert(ical_obj);
+            eventSource.loadJSON(simile_obj,
+                                 'http://l10n.mozilla.org/~stas/fx4special/');
+            getFilter();
+        });
+        setupFilterHighlightControls($("#controls")[0], tl, [0,1], theme);
+
+    } // }}}
+
+    var resizeTimerID = null; // {{{
+    function onResize() {
+        if (resizeTimerID == null) {
+            resizeTimerID = window.setTimeout(function() {
+                resizeTimerID = null;
+                tl.layout();
+            }, 500);
+        }
+    } // }}}
+
+    function getFilter() { // {{{
+        $('#filter').val(location.hash.substring(1));
+        performFiltering(tl, [0,1]);
+    } // }}}
+
+    </script>
+
+    <style type="text/css"> /* {{{ */
+        @import "jquery.icalendar.css";
+
+        body {
+            padding: 10px;
+            font: 1em/1.3 "Helvetica";
+        }
+
+        h1 {
+            float: left;
+            margin: 20px 50px 20px 0;
+        }
+
+        #controls {
+            float: left;
+            margin: 30px 0 20px 0;
+        }
+
+        #controls div {
+            float: left;
+        }
+
+        #controls input {
+            width: 100px;
+            background: #ffb url('search-textbox.png') no-repeat 2px 50%;
+            padding-left: 15px;
+        }
+
+        #clear {
+            padding: 0;
+            margin: 0 0 5px;
+            width: 11px;
+            height: 1.7em;
+            border: 0;
+            overflow: hidden;
+            background: transparent url('searchfield-small-cancel.png') 
+            no-repeat 0px 0;
+        }
+
+        #clear:active {
+            background-position: -11px 0;
+        }
+
+        #help {
+            color: #666;
+            font-size: 10pt;
+            padding: 3pt 0 0 20px;
+        }
+
+        #timeline {
+            clear: both;
+            height: 600px;
+            border: 1px solid #aaa;
+        }
+
+        .timeline-event-tape {
+            font-size: 10pt;
+            color: #fff;
+            opacity: 1 !important;
+            padding: 2px 0 0 3px;
+        }
+
+        #footnotes {
+            color: #666;
+            margin: 2em 0 0 0;
+            font-size: 9pt;
+        }
+
+        /* {{{ webifyme */
+        .webifyme.timeline-event-tape::before {
+            content: "webifyme ";
+        }
+        .webifyme.timeline-event-tape, .small-webifyme {
+            background-color: #0073E6;
+        }
+        .webifyme.timeline-event-label {
+            color: #0073E6;
+        } /* }}} */
+
+        /* {{{ spark */
+        .spark.timeline-event-tape::before {
+            content: "spark ";
+        }
+        .spark.timeline-event-tape, .small-spark {
+            background-color: #6c0;
+        }
+        .spark.timeline-event-label {
+            color: #6c0;
+        } /* }}} */
+
+        /* {{{ dstudio */
+        .dstudio.timeline-event-tape::before {
+            content: "dstudio ";
+        }
+        .dstudio.timeline-event-tape, .small-dstudio {
+            background-color: #FF0000;
+        }
+        .dstudio.timeline-event-label {
+            color: #FF0000;
+        } /* }}} */
+
+        /* {{{ webowonder */
+        .webowonder.timeline-event-tape::before {
+            content: "webowonder ";
+        }
+        .webowonder.timeline-event-tape, .small-webowonder {
+            background-color: #FF8000;
+        }
+        .webowonder.timeline-event-label {
+            color: #FF8000;
+        } /* }}} */
+
+        /* {{{ markup */
+        .markup.timeline-event-tape::before {
+            content: "markup ";
+        }
+        .markup.timeline-event-tape, .small-markup {
+            background-color: #ADD6FF;
+        }
+        .markup.timeline-event-label {
+            color: #ADD6FF;
+        } /* }}} */
+
+        /* {{{ tparty */
+        .tparty.timeline-event-tape::before {
+            content: "tparty ";
+        }
+        .tparty.timeline-event-tape, .small-tparty {
+            background-color: #61B0FF;
+        }
+        .tparty.timeline-event-label {
+            color: #61B0FF;
+        } /* }}} */
+
+        /* {{{ joinmozilla */
+        .joinmozilla.timeline-event-tape::before {
+            content: "joinmozilla ";
+        }
+        .joinmozilla.timeline-event-tape, .small-joinmozilla {
+            background-color: #E60073;
+        }
+        .joinmozilla.timeline-event-label {
+            color: #E60073;
+        } /* }}} */
+
+        /* {{{ syncacc */
+        .syncacc.timeline-event-tape::before {
+            content: "syncacc ";
+        }
+        .syncacc.timeline-event-tape, .small-syncacc {
+            background-color: #7300E6;
+        }
+        .syncacc.timeline-event-label {
+            color: #7300E6;
+        } /* }}} */
+
+        /* {{{ fbbadges */
+        .fbbadges.timeline-event-tape::before {
+            content: "fbbadges ";
+        }
+        .fbbadges.timeline-event-tape, .small-fbbadges {
+            background-color: #EDC309;
+        }
+        .fbbadges.timeline-event-label {
+            color: #EDC309;
+        } /* }}} */
+
+        /* {{{ fbwebhero */
+        .fbwebhero.timeline-event-tape::before {
+            content: "fbwebhero ";
+        }
+        .fbwebhero.timeline-event-tape, .small-fbwebhero {
+            background-color: #EDC309;
+        }
+        .fbwebhero.timeline-event-label {
+            color: #EDC309;
+        } /* }}} */
+
+        /* {{{ glow */
+        .glow.timeline-event-tape::before {
+            content: "glow ";
+        }
+        .glow.timeline-event-tape, .small-glow {
+            background-color: #4c9900;
+        }
+        .glow.timeline-event-label {
+            color: #4c9900;
+        } /* }}} */
+
+        /* {{{ sparkeol */
+        .sparkeol.timeline-event-tape::before {
+            content: "sparkeol ";
+        }
+        .sparkeol.timeline-event-tape, .small-sparkeol {
+            background-color: #6c0;
+        }
+        .sparkeol.timeline-event-label {
+            color: #6c0;
+        } /* }}} */
+
+        /* }}} */ </style> 
+
+</head>
+
+<body onload="onLoad();" onresize="onResize();" onhashchange="getFilter();">
+
+<h1>Special Projects Timeline</h1>
+
+<div class="controls" id="controls">
+    <div>
+        <input type="text" id="filter"/>
+        <button id="clear"/>
+    </div>
+    <div id="help">
+        e.g. <a href="#localization">localization</a>, 
+        <a href="#freeze">freeze</a>,
+        <a href="#launch">launch</a>,
+        <a href="#desktop">desktop</a>
+    </div>
+</div>
+<div id="timeline"></div>
+<noscript>
+    This page uses Javascript to show you a Timeline. Please enable Javascript 
+    in your browser to see the full page. Thank you.
+</noscript>
+
+<div id="footnotes">
+    You can download the <a href="https://mail.mozilla.com/home/smalolepszy@mozilla.com/fx4special">ICS</a> file, or view it in <a href="https://mail.mozilla.com/home/smalolepszy@mozilla.com/fx4special.html">HTML</a>, too.
+</div>
+
+
+</body>
+</html>
+
+<!-- vim: set fdm=marker nowrap: -->
